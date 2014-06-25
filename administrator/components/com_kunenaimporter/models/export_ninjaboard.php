@@ -1,12 +1,14 @@
 <?php
 /**
- * Kunena Importer component
- * @package Kunena.com_kunenaimporter
+ * @package com_kunenaimporter
  *
- * @copyright (C) 2008 - 2012 Kunena Team. All rights reserved.
+ * Imports forum data into Kunena
+ *
+ * @Copyright (C) 2009 - 2011 Kunena Team All rights reserved
  * @license http://www.gnu.org/copyleft/gpl.html GNU/GPL
  * @link http://www.kunena.org
- **/
+ *
+ */
 defined ( '_JEXEC' ) or die ();
 
 require_once( JPATH_COMPONENT . '/models/export.php' );
@@ -284,15 +286,15 @@ class KunenaimporterModelExport_Ninjaboard extends KunenaimporterModelExport {
 			posts AS numPosts,
 			last_post_id AS id_last_msg,
 			ninjaboard_forum_id AS id,
-			path AS parent_id
+			path AS parent
 		FROM #__ninjaboard_forums)
 		ORDER BY id";
 		$result = $this->getExportData($query, $start, $limit);
 		foreach ($result as $key=>&$row) {
-			if( $row->parent_id=='/' ) {
-				$row->parent_id='0';
+			if( $row->parent=='/' ) {
+				$row->parent='0';
 			} else {
-				$row->parent_id=preg_replace('#/?#','',$row->parent_id);
+				$row->parent=preg_replace('#/?#','',$row->parent);
 			}
 			$row->name = $this->prep($row->name);
 			$row->description = $this->prep($row->description);
@@ -301,7 +303,7 @@ class KunenaimporterModelExport_Ninjaboard extends KunenaimporterModelExport {
 	}
 
 	public function countMessages() {
-		$query = "SELECT COUNT(*) FROM #__ninjaboard_messages";
+		$query = "SELECT COUNT(*) FROM #__ninjaboard_posts"; /* brunog916 - wrong table name */
 		return $this->getCount ( $query );
 	}
 
@@ -309,7 +311,7 @@ class KunenaimporterModelExport_Ninjaboard extends KunenaimporterModelExport {
 		// TODO: in replies the subject is empty, need to find a way to fill it
  		$query = "SELECT
  			p.ninjaboard_post_id AS id,
-			IF(p.ninjaboard_post_id=t.ninjaboard_topic_id,0,t.ninjaboard_topic_id) AS parent,
+			IF(p.ninjaboard_post_id=t.first_post_id,0,t.ninjaboard_topic_id) AS parent, /* Wrong condition to find first post, which must have id=0 on Kunena */
 			t.first_post_id AS thread,
 			t.forum_id AS catid,
 			u.username AS name,
@@ -325,11 +327,26 @@ class KunenaimporterModelExport_Ninjaboard extends KunenaimporterModelExport {
 			p.ninjaboard_topic_id AS topic_emoticon
 			FROM #__ninjaboard_posts AS p
 			LEFT JOIN #__ninjaboard_topics AS t ON t.ninjaboard_topic_id=p.ninjaboard_topic_id
-			LEFT JOIN #__users AS u ON u.id=p.created_user_id";
+			LEFT JOIN #__users AS u ON u.id=p.created_user_id
+			ORDER BY thread"; /* brunog916: order inserted to sort threads; required to insert subjects in replies*/
 		$result = $this->getExportData ( $query, $start, $limit, 'id' );
+		
+		$oggetto = 'Re: '.$result['0']->subject; /* brunog916: initialiting subject*/
+		
 		foreach ( $result as &$row ) {
-			$row->subject = $this->prep ( $row->subject );
+		/* brunog916: set subject if empty or copy the values of the first post subject of every thread*/
+		if ($row->subject == '')
+		{
+			$row->subject=$oggetto;
+		}
+		else
+		{
+			$oggetto ='Re: '.$row->subject;
+		}
+			//$row->subject = $this->prep ( $row->subject ); brunog916 - subject is set as above
+			
 			$row->message = $this->prep ( $row->message );
+			
 		}
 		return $result;
 	}
@@ -436,7 +453,7 @@ class KunenaimporterModelExport_Ninjaboard extends KunenaimporterModelExport {
 			created_by AS userid
 		FROM `#__ninjaboard_subscriptions`
 		WHERE subscription_type=3";
-		$result = $this->getExportData ( $query, $start, $limit );
+		$result = $this->getExportData ( $query, $start, $limit);
 		return $result;
 	}
 
@@ -460,7 +477,7 @@ class KunenaimporterModelExport_Ninjaboard extends KunenaimporterModelExport {
 	public function &exportAttachments($start = 0, $limit = 0) {
 		$query = "SELECT
 			ninjaboard_attachment_id AS id,
-			file AS filname,
+			file AS filename, /* brunog916 - fixed field name */
 			joomla_user_id AS userid,
 			post_id AS mesid,
 			NULL AS hash,
